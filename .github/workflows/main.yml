@@ -16,19 +16,19 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      # 1. Descarga el código
       - uses: actions/checkout@v4
 
       - name: Read .flutter-version
         id: get-version
         run: |
-          echo "version=$(cat .flutter-version)" >> $GITHUB_OUTPUT
+          ver=$(cat .flutter-version)
+          echo "FLUTTER_VERSION=$ver" >> $GITHUB_ENV    # <-- la “exportas”
 
-      # 2. Instala Flutter (subosito/flutter-action soporta los tres SO)                  
-      - uses: subosito/flutter-action@v2           # :contentReference[oaicite:0]{index=0}
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
-          cache: true            # acelera builds posteriores
+          cache: true
 
       # 3. Prepara dependencias Dart/Flutter
       - name: Pub get
