@@ -1,0 +1,57 @@
+name: Build Flutter desktop
+
+on:
+  workflow_dispatch:      # permite lanzarlo a mano desde la pestaña “Actions”
+
+env:
+  FLUTTER_VERSION: "stable"   # o "3.22.1" si quieres fijar
+
+jobs:
+  build-desktop:
+    strategy:
+      fail-fast: false        # si un SO falla los demás siguen
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # 1. Descarga el código
+      - uses: actions/checkout@v4
+
+      # 2. Instala Flutter (subosito/flutter-action soporta los tres SO)                  
+      - uses: subosito/flutter-action@v2           # :contentReference[oaicite:0]{index=0}
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true            # acelera builds posteriores
+
+      # 3. Prepara dependencias Dart/Flutter
+      - name: Pub get
+        run: flutter pub get
+
+      # 4. Compila según el sistema
+      - name: Build desktop binary
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            flutter build linux --release
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
+            flutter build windows --release
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            flutter build macos --release
+          fi
+
+      # 5. Empaqueta (opcional) ─ ejemplo rápido de zip
+      - name: Zip artifact
+        if: runner.os != 'macOS'     # en macOS a veces quieres .dmg
+        run: |
+          cd build
+          zip -r ../${{ runner.os }}-desktop.zip **/Release/**
+
+      # 6. Sube el resultado a “Artifacts”
+      - uses: actions/upload-artifact@v4           # :contentReference[oaicite:1]{index=1}
+        with:
+          name: ${{ runner.os }}-desktop
+          path: |
+            ${{ runner.os }}-desktop.zip
+            build/**/Release/**        # sube sin comprimir en macOS
+          if-no-files-found: error
