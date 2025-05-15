@@ -1,41 +1,43 @@
 name: Build Flutter desktop
 
 on:
-  workflow_dispatch:      # permite lanzarlo a mano desde la pestaña “Actions”
-
-env:
-  FLUTTER_VERSION: ${{ steps.get-version.outputs.version }}   # o "3.22.1" si quieres fijar
+  # lo lanzas a mano o lo puedes ampliar con push/pull_request si quieres
+  workflow_dispatch:
 
 jobs:
   build-desktop:
     strategy:
-      fail-fast: false        # si un SO falla los demás siguen
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
     steps:
+      # 1. Clona el repo
       - uses: actions/checkout@v4
 
+      # 2. Lee la versión de .flutter-version y la exporta para los demás pasos
       - name: Read .flutter-version
         id: get-version
         run: |
           ver=$(cat .flutter-version)
-          echo "FLUTTER_VERSION=$ver" >> $GITHUB_ENV    # <-- la “exportas”
+          echo "FLUTTER_VERSION=$ver" >> "$GITHUB_ENV"
 
+      # 3. Instala Flutter con la versión detectada
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
-      # 3. Prepara dependencias Dart/Flutter
+      # 4. Dependencias
       - name: Pub get
         run: flutter pub get
 
-      # 4. Compila según el sistema
+      # 5. Build según SO
       - name: Build desktop binary
+        shell: bash         # obliga a bash en Windows para el if [[ … ]]
         run: |
           if [[ "$RUNNER_OS" == "Linux" ]]; then
             flutter build linux --release
@@ -45,18 +47,38 @@ jobs:
             flutter build macos --release
           fi
 
-      # 5. Empaqueta (opcional) ─ ejemplo rápido de zip
-      - name: Zip artifact
-        if: runner.os != 'macOS'     # en macOS a veces quieres .dmg
+      # 6. Empaquetar artefacto
+      # 6-a Linux → ZIP
+      - name: Zip artifact (Linux)
+        if: ${{ runner.os == 'Linux' }}
         run: |
-          cd build
-          zip -r ../${{ runner.os }}-desktop.zip **/Release/**
+          cd build/linux
+          zip -r ../../linux-desktop.zip .
 
-      # 6. Sube el resultado a “Artifacts”
-      - uses: actions/upload-artifact@v4           # :contentReference[oaicite:1]{index=1}
+      # 6-b Windows → ZIP vía PowerShell
+      - name: Zip artifact (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        shell: powershell
+        run: |
+          Compress-Archive -Path 'build/windows/runner/Release/*' -DestinationPath windows-desktop.zip
+
+      # 6-c macOS → DMG simple
+      - name: Create DMG (macOS)
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          mkdir -p dist
+          hdiutil create -volname YourApp \
+            -srcfolder "build/macos/Build/Products/Release" \
+            -ov -format UDZO dist/macos-desktop.dmg
+
+      # 7. Subida de artefactos
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ runner.os }}-desktop
           path: |
-            ${{ runner.os }}-desktop.zip
-            build/**/Release/**        # sube sin comprimir en macOS
+            linux-desktop.zip
+            windows-desktop.zip
+            dist/macos-desktop.dmg
+            build/**/Release/**        # sube binarios sueltos por si falló el empaquetado
           if-no-files-found: error
